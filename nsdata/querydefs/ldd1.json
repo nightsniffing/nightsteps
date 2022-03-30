@@ -1,0 +1,149 @@
+{
+  "databaseName":"ldd",
+  "databaseType":"Pg",
+  "databasePw":"",
+  "minDate":{"year":2007, "month":9,"day":1},
+  "maxDate":{"year":2019, "month":8,"day":31},
+  "listenSettings":{
+    "centreThresholds":[{"maxdist":100, "repeats":1, "solstr":45},
+                        {"maxdist":80, "repeats": 2, "solstr":55},
+                        {"maxdist":60, "repeats": 3, "solstr":65},
+                        {"maxdist":50, "repeats": 4, "solstr":70},
+                        {"maxdist":40, "repeats": 6, "solstr":75},
+                        {"maxdist":30, "repeats": 8, "solstr":75},
+                        {"maxdist":25, "repeats": 9, "solstr":80},
+                        {"maxdist":15, "repeats": 12, "solstr":80}],
+    "offcentreThresholds":[{"maxdist":80, "repeats":1, "solstr":55},
+                        {"maxdist":50, "repeats": 2, "solstr":"65"},
+                        {"maxdist":30, "repeats": 3, "solstr":"75"}]
+  },
+  "percentileQuery":{
+    "totalarea":{
+      "query":" select  percentile_disc(0.1) within group (order by (proposed_net_site_area + gross_area)) AS ten_pc,  percentile_disc(0.3) within group (order by (proposed_net_site_area + gross_area)) AS thirty_pc,  percentile_disc(0.5) within group (order by (proposed_net_site_area + gross_area)) AS fifty_pc,  percentile_disc(0.7) within group (order by (proposed_net_site_area + gross_area)) AS seventy_pc,  percentile_disc(0.9) within group (order by (proposed_net_site_area + gross_area)) AS ninety_pc FROM app_ldd.ld_permissions;",
+      "bands":[ {"percentileName":"zero_pc", "solstr":0, "rhythmstr":0, "minval":0.0},
+                {"percentileName":"ten_pc", "solstr":2, "rhythmstr":0},
+                {"percentileName":"thirty_pc", "solstr":6, "rhythmstr":1},
+                {"percentileName":"fifty_pc", "solstr":10, "rhythmstr":2},
+                {"percentileName":"seventy_pc", "solstr":14, "rhythmstr":3},
+                {"percentileName":"ninety_pc", "solstr":20, "rhythmstr":4}]
+    }
+  },
+  "viewQuery":{
+    "viewName":"app_ldd.v_perm_widerarea",
+    "latField":"lat",
+    "lonField":"lon",
+    "keyField":{"table":"p", "name":"permission_id"},
+    "otherGroupbyFields":"p.completed_date, p.status_rc, p.descr",
+    "selectOnlyFields":"COUNT(prl_super.permission_id) AS branches, date_part('year', p.permission_date) AS permissionyear, date_part('year', p.completed_date) AS completedyear,  (COALESCE(p.gross_area, 0.0) + COALESCE(p.proposed_net_site_area, 0.0)) AS totalarea ",
+    "from":"(((app_ldd.ld_permissions AS p LEFT JOIN app_ldd.ns_permlatlon AS ll ON p.permission_id=ll.permission_id) LEFT JOIN app_ldd.ld_prop_res_lines AS prl_super ON p.permission_id=prl_super.superseded_permission_id) ",
+    "having":"HAVING COUNT(prl_super.permission_id) = 0 ",
+    "dateFields":{
+      "dateField":"p.completed_date",
+      "statusField":"p.status_rc",
+      "stillToComeStatuses":["SUBMITTED","STARTED"],
+      "stillToComeStatusCheck":"(p.status_rc = 'SUBMITTED' OR p.status_rc = 'STARTED')",
+      "dateRangeStatuses":["COMPLETED"],
+      "dateRangeStatusCheck":"(p.status_rc = 'COMPLETED')",
+      "mightHaveBeenStatuses":["DELETED","LAPSED"],
+      "mightHaveBeenStatusCheck":"(p.status_rc = 'DELETED' OR p.status_rc = 'LAPSED')"
+    },
+    "options":{
+      "everything":{
+        "fields":"",
+        "from":")",
+        "where":"",
+        "having":"",
+        "percentileFieldAndQuery":"totalarea"
+      },
+      "textsearch-demolition":{
+        "fields":"",
+        "from":")",
+        "where":" AND (p.descr ILIKE '%demoli%') ",
+        "having":"",
+        "percentileFieldAndQuery":"totalarea"
+      },
+      "textsearch-changeofuse":{
+        "fields":"",
+        "from":")",
+        "where":" AND (p.descr ILIKE '%change of use%') ",
+        "having":"",
+        "percentileFieldAndQuery":"totalarea"
+      },
+      "socialhousing-increase":{
+        "fields":"SUM(erl.number_of_units) AS existingSocialHousing, SUM(prl.number_of_units) AS proposedSocialHousing",
+        "from":" LEFT JOIN app_ldd.ld_exist_res_lines AS erl ON p.permission_id = erl.permission_id ) LEFT JOIN app_ldd.ld_prop_res_lines AS prl ON p.permission_id = prl.permission_id ",
+        "where":" AND (erl.tenure_type_rc = 'S' OR prl.tenure_type_rc = 'S') ",
+        "having":" AND ((SUM(prl.number_of_units) - SUM(erl.number_of_units)) >= 1) ",
+        "percentileFieldAndQuery":"totalarea"
+      },
+      "socialhousing-decrease":{
+        "fields":"SUM(erl.number_of_units) AS existingSocialHousing, SUM(prl.number_of_units) AS proposedSocialHousing",
+        "from":" LEFT JOIN app_ldd.ld_exist_res_lines AS erl ON p.permission_id = erl.permission_id ) LEFT JOIN app_ldd.ld_prop_res_lines AS prl ON p.permission_id = prl.permission_id ",
+        "where":" AND (erl.tenure_type_rc = 'S' OR prl.tenure_type_rc = 'S') ",
+        "having":" AND ((SUM(prl.number_of_units) - SUM(erl.number_of_units)) <= -1) ",
+        "percentileFieldAndQuery":"totalarea"
+      },
+      "socialhousing-exists":{
+        "fields":"SUM(erl.number_of_units) AS existingSocialHousing",
+        "from":" LEFT JOIN app_ldd.ld_exist_res_lines AS erl ON p.permission_id = erl.permission_id )",
+        "where":" AND (erl.tenure_type_rc = 'S') ",
+        "having":" AND (SUM(erl.number_of_units)) >= 1) ",
+        "percentileFieldAndQuery":"totalarea"
+      }
+    }
+  },
+  "geosonQuery":{
+    "polygonField":"the_geom",
+    "pointField":"the_geom_pt",
+    "otherSelectFields":["lat", "lon", 
+                         "completed_date", "permission_id", "totalarea",
+                         "status_rc", "permissionyear", "descr",
+                         "completedyear"],
+    "from":"app_ldd.v_perm_widerarea AS v INNER JOIN app_ldd.nsll_ld_permissions_geo AS geo ON v.permission_id=geo.objectid",
+    "options":{
+      "socialhousing-exists":{
+        "fields":["existingSocialHousing"]
+      }
+    }
+  },
+  "sonification":{
+    "beats":24,
+    "distanceDiminish":"strong",
+    "rules":[],
+    "effectSets":{
+      "future":[
+        {
+          "test":"{status_rc} eq 'SUBMITTED' || {status_rc} eq 'STARTED'",
+          "effect":"destable",
+          "arg":{"strength":20}
+        },
+        {
+          "test":"{status_rc} eq 'LAPSED'",
+          "effect":"destable",
+          "arg":{"strength":40}
+        },
+        {
+          "test":"{status_rc} eq 'LAPSED'",
+          "effect":"diminish",
+          "arg":{"strength":15}
+        },
+        {
+          "test":"{status_rc} eq 'DELETED'",
+          "effect":"destable",
+          "arg":{"strength":15}
+        }
+      ],
+      "past":[
+        {
+          "test":"{status_rc} eq 'COMPLETED'",
+          "effect":"destable",
+          "arg":{"strength":10}
+        }
+      ]
+    },
+    "optionSpecificRules":{
+    },
+    "optionSpecificEffects":{
+    }
+  }
+}
